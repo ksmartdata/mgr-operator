@@ -192,6 +192,7 @@ class MySQLBackupSpec:
         self.timeZone: str = ""
         self.addTimestampToBackupDirectory: bool = True
         self.operator_image: str = ""
+        self.backup_image: str = ""
         self.operator_image_pull_policy: str = ""
         self.serviceAccountName : Optional[str] = None
         self.parse(spec)
@@ -221,6 +222,7 @@ class MySQLBackupSpec:
             raise
 
         self.operator_image = cluster.parsed_spec.operator_image
+        self.backup_image = cluster.parsed_spec.backup_image
         self.operator_image_pull_policy = cluster.parsed_spec.operator_image_pull_policy
         self.serviceAccountName = cluster.parsed_spec.serviceAccountName
 
