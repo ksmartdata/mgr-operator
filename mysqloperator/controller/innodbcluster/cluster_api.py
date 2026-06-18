@@ -6,6 +6,7 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import PurePosixPath
+import os
 import typing, abc
 from typing import Optional, Union, List, Tuple, Dict, Callable, cast, overload
 
@@ -1079,6 +1080,15 @@ class AbstractServerSetSpec(abc.ABC):
             image = config.MYSQL_OPERATOR_EE_IMAGE
 
         return self.format_image(image, self.sidecarVersion)
+
+    @property
+    def backup_image(self) -> str:
+        # Backup job prefers the operator's own deployed image (mgr-operator),
+        # injected via the MYSQL_OPERATOR_POD_IMAGE env at deploy time. This avoids
+        # dynamically deriving community-operator, which is the operator's base image
+        # and is not part of the offline image bundle (see issue #539).
+        # Falls back to operator_image when the env is unset (fully backward compatible).
+        return os.getenv("MYSQL_OPERATOR_POD_IMAGE") or self.operator_image
 
 
     @property
