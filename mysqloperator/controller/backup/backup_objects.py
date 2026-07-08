@@ -68,7 +68,7 @@ spec:
         fsGroup: 27
       containers:
       - name: operator-backup-job
-        image: {spec.operator_image}
+        image: {spec.backup_image}
         imagePullPolicy: {spec.operator_image_pull_policy}
         command: ["mysqlsh", "--pym", "mysqloperator", "backup",
                   "--command", "execute-backup",
@@ -247,7 +247,7 @@ spec:
             fsGroup: 27
           containers:
           - name: operator-backup-job-cron
-            image: {spec.operator_image}
+            image: {spec.backup_image}
             imagePullPolicy: {spec.operator_image_pull_policy}
             command: ["mysqlsh", "--pym", "mysqloperator", "backup",
                       "--command", "create-backup-object",
@@ -388,7 +388,7 @@ def ensure_schedules_use_current_image(spec: InnoDBClusterSpec, logger: Logger) 
         logger.info(f"Checking operator version for backup schedule {spec.namespace}/{spec.name}/{schedule.name}")
         cj = schedule_cron_job_job(spec.namespace, spec.name, schedule.name)
         old_image = cj.spec.job_template.spec.template.spec.containers[0].image
-        if old_image != spec.operator_image:
-            cj.spec.job_template.spec.template.spec.containers[0].image = spec.operator_image
+        if old_image != spec.backup_image:
+            cj.spec.job_template.spec.template.spec.containers[0].image = spec.backup_image
             cj_name = schedule_cron_job_name(spec.name, schedule.name)
             api_cron_job.replace_namespaced_cron_job(name=cj_name, namespace=spec.namespace, body=cj)

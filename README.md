@@ -1,4 +1,5 @@
 # MySQL Operator for Kubernetes
+The origin of this branch is the tag 8.4.9-2.1.11 from https://github.com/mysql/mysql-operator.
 
 ## Introduction
 

@@ -335,7 +335,6 @@ def update_deployment_spec(dpl: api_client.V1Deployment, patch: dict) -> None:
     api_apps.patch_namespaced_deployment(
         dpl.metadata.name, dpl.metadata.namespace, body=patch)
 
-
 def update_router_container_template_property(dpl: api_client.V1Deployment,
                                               property_name: str, property_value: str,
                                               logger: Logger) -> None:
@@ -434,36 +433,46 @@ def restart_deployment_for_tls(dpl: api_client.V1Deployment, router_tls_crt, rou
     logger.info("TLS data hasn't changed. Deployment doesn't need a restart")
     return False
 
-
 def update_router_account(cluster: InnoDBCluster, on_nonupdated: Optional[Callable], logger: Logger) -> None:
-      if not cluster.ready:
-          logger.info(f"Cluster {cluster.namespace}/{cluster.name} not ready. Skipping router account update.")
-          return
+    if not cluster.ready:
+        logger.info(f"Cluster {cluster.namespace}/{cluster.name} not ready. Skipping router account update.")
+        return
 
-      try:
-          user, password = cluster.get_router_account()
-      except ApiException as e:
-          if e.status == 404:
-              # Should not happen, as cluster.ready should be False for a cluster with missing router account
-              # In any case handle this case and skip
-              logger.warning(f"Could not find router account of {cluster.name} in {cluster.namespace}")
-              return
-          raise
+    try:
+        user, password = cluster.get_router_account()
+    except ApiException as e:
+        if e.status == 404:
+            # Should not happen, as cluster.ready should be False for a cluster with missing router account
+            # In any case handle this case and skip
+            logger.warning(f"Could not find router account of {cluster.name} in {cluster.namespace}")
+            return
+        raise
 
-      updated = False
+    updated = False
 
-      for pod in cluster.get_pods():
-          if pod.deleting:
-              continue
-          try:
-              with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
-                  dba.get_cluster().setup_router_account(user, {"update": True})
-                  updated = True
-                  break
+    for pod in cluster.get_pods():
+        if pod.deleting:
+            continue
+        try:
+            with shellutils.DbaWrap(shellutils.connect_dba(pod.endpoint_co, logger, max_tries=3)) as dba:
+                logger.info(f"update_router_account, connect to {pod.name}")
+                update = True
+                try:
+                    dba.session.run_sql("show grants for ?@'%'", [user])
+                except mysqlsh.Error as e:
+                    if e.code == mysqlsh.mysql.ErrorCode.ER_NONEXISTING_GRANT:
+                        update = False
+                    else:
+                        raise
+                shellutils.setup_router_account_with_try(dba.get_cluster(), logger, user, password, update)
+                updated = True
+                break
 
-          except mysqlsh.Error as e:
-              logger.warning(f"Could not connect to {pod.endpoint_co}: {e}")
-              continue
+        except mysqlsh.Error as e:
+            logger.warning(f"Could not connect to {pod.endpoint_co}: {e}")
+            continue
 
-      if not updated and on_nonupdated:
-          on_nonupdated()
+    if not updated and on_nonupdated:
+        on_nonupdated()
+    elif not updated:
+        logger.warning(f"Cluster {cluster.namespace}/{cluster.name} unreachable")
