@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -6,10 +6,10 @@
 import os
 
 # version
-VERSION_TAG = "8.3.0"
+VERSION_TAG = "8.4.9"
 
 MIN_SUPPORTED_VERSION = "8.0.27"
-MAX_SUPPORTED_VERSION = "8.3.0"
+MAX_SUPPORTED_VERSION = "8.4.99"
 
 # image
 IMAGE_REGISTRY = os.getenv(
@@ -27,7 +27,7 @@ OPERATOR_EE_IMAGE_NAME = os.getenv(
     "OPERATOR_TEST_EE_IMAGE_NAME", default="enterprise-operator")
 
 OPERATOR_VERSION_TAG = os.getenv(
-    "OPERATOR_TEST_VERSION_TAG", default="8.3.0-2.1.2")
+    "OPERATOR_TEST_VERSION_TAG", default="8.4.9-2.1.11")
 
 OPERATOR_OLD_VERSION_TAG = os.getenv(
     "OPERATOR_TEST_OLD_VERSION_TAG", default="8.0.31-2.0.7")
@@ -68,9 +68,46 @@ OCI_BUCKET_NAME = os.getenv(
 OCI_VAULT_CONFIG_PATH = os.getenv(
     "OPERATOR_TEST_VAULT_CONFIG_PATH", default=None)
 
+OCI_S3_ENDPOINT = os.getenv(
+    "OPERATOR_TEST_OCI_S3_ENDPOINT", default=None)
+
+OCI_S3_PROFILE = os.getenv(
+    "OPERATOR_TEST_OCI_S3_PROFILE", default=None)
+
+OCI_S3_CONFIG_PATH = os.getenv(
+    "OPERATOR_TEST_OCI_S3_CONFIG_PATH", default=None)
+
+OCI_S3_CREDENTIALS_PATH = os.getenv(
+    "OPERATOR_TEST_OCI_S3_CREDENTIALS_PATH", default=None)
+
+# s3 compatible storage, non oci
+S3_SKIP = os.getenv(
+    "OPERATOR_TEST_SKIP_S3", default=False)
+
+S3_BUCKET_NAME = os.getenv(
+    "OPERATOR_TEST_S3_BUCKET", default=None)
+
+S3_ENDPOINT = os.getenv(
+    "OPERATOR_TEST_S3_ENDPOINT", default=None)
+
+S3_PROFILE = os.getenv(
+    "OPERATOR_TEST_S3_PROFILE", default=None)
+
+S3_CONFIG_PATH = os.getenv(
+    "OPERATOR_TEST_S3_CONFIG_PATH", default=None)
+
+S3_CREDENTIALS_PATH = os.getenv(
+    "OPERATOR_TEST_S3_CREDENTIALS_PATH", default=None)
+
 # azure backup
 AZURE_SKIP = os.getenv(
     "OPERATOR_TEST_SKIP_AZURE", default=False)
+
+AZURE_STORAGE_IMAGE_NAME = os.getenv(
+    "OPERATOR_TEST_AZURE_STORAGE_IMAGE_NAME", default="mcr.microsoft.com/azure-storage/azurite")
+
+AZURE_CLI_IMAGE_NAME = os.getenv(
+    "OPERATOR_TEST_AZURE_CLI_IMAGE_NAME", default="mcr.microsoft.com/azure-cli")
 
 AZURE_CONFIG_FILE = os.getenv(
     "OPERATOR_TEST_AZURE_CONFIG_FILE", default=None)
@@ -79,11 +116,11 @@ AZURE_CONTAINER_NAME = os.getenv(
     "OPERATOR_TEST_AZURE_CONTAINER_NAME", default=None)
 
 FLUENTD_IMAGE_NAME= os.getenv(
-    "OPERATOR_TEST_FLUENTD_IMAGE_NAME", default="fluent/fluentd-kubernetes-daemonset:v1.16-debian-s3-amd64-1")
+    "OPERATOR_TEST_FLUENTD_IMAGE_NAME", default="fluent/fluentd-kubernetes-daemonset:v1.18-debian-s3-amd64-1")
 
 # metrics sidecar
 METRICS_IMAGE_NAME = os.getenv(
-    "OPERATOR_TEST_METRICS_IMAGE_NAME", default=None)
+    "OPERATOR_TEST_METRICS_IMAGE_NAME", default="prom/mysqld-exporter:v0.14.0")
 
 
 # k8s

@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -22,6 +22,10 @@ class DumpInstance(tutil.OperatorTest):
     backup_volume_name = "test-backup-storage"
     oci_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
     oci_storage_output = None
+    oci_s3_dump_name = "dump-test-oci-s3-1"
+    oci_s3_config_secret = "oci-s3-config"
+    s3_dump_name = "dump-test-s3"
+    s3_config_secret = "s3-config"
     azure_dump_name = "dump-test-azure"
     azure_storage_prefix = f"/e2etest/{g_ts_cfg.get_worker_label()}"
 
@@ -50,6 +54,13 @@ class DumpInstance(tutil.OperatorTest):
 
         container = g_ts_cfg.azure_container_name
 
+        oci_s3_endpoint = g_ts_cfg.oci_s3_endpoint
+        oci_s3_profile = g_ts_cfg.oci_s3_profile
+
+        s3_bucket = g_ts_cfg.s3_bucket_name
+        s3_endpoint = f'endpoint: "{g_ts_cfg.s3_endpoint}"' if g_ts_cfg.s3_endpoint else ''
+        s3_profile = g_ts_cfg.s3_profile
+
         # create cluster with mostly default configs
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
@@ -75,6 +86,28 @@ spec:
           prefix: {self.oci_storage_prefix}
           bucketName: {bucket or "not-set"}
           credentials: backup-apikey
+      dumpOptions:
+        excludeSchemas: ["excludeme"]
+  - name: fulldump-oci-s3
+    dumpInstance:
+      storage:
+        s3:
+          prefix : {self.oci_storage_prefix}
+          bucketName: {bucket or "not-set"}
+          config: {self.oci_s3_config_secret}
+          endpoint: "{oci_s3_endpoint}"
+          profile: "{oci_s3_profile}"
+      dumpOptions:
+        excludeSchemas: ["excludeme"]
+  - name: fulldump-s3
+    dumpInstance:
+      storage:
+        s3:
+          prefix : "/"
+          bucketName: {s3_bucket or "not-set"}
+          config: {self.s3_config_secret}
+          {s3_endpoint}
+          profile: "{s3_profile}"
       dumpOptions:
         excludeSchemas: ["excludeme"]
   - name: test-azure
@@ -208,12 +241,12 @@ spec:
         # Set this environment variable to the location of the OCI API Key
         # to use for backups to OCI Object Storage
         kutil.create_apikey_secret(self.ns, "backup-apikey", g_ts_cfg.oci_config_path, "BACKUP")
-
+        dump_name = self.oci_dump_name
         yaml = f"""
 apiVersion: mysql.oracle.com/v2
 kind: MySQLBackup
 metadata:
-  name: {self.oci_dump_name}
+  name: {dump_name}
 spec:
   clusterName: mycluster
   backupProfileName: fulldump-oci
@@ -223,7 +256,7 @@ spec:
         # wait for backup to be done
         def check_mbk(l):
             for item in l:
-                if item["NAME"] == self.oci_dump_name and item["STATUS"] == "Completed":
+                if item["NAME"] == dump_name and item["STATUS"] == "Completed":
                     return item
             return None
 
@@ -232,23 +265,21 @@ spec:
         output = r["OUTPUT"]
         self.assertEqual(r["CLUSTER"], "mycluster")
         self.assertEqual(r["STATUS"], "Completed")
-        self.assertTrue(output.startswith(f"{self.oci_dump_name}-"))
+        self.assertTrue(output.startswith(f"{dump_name}-"))
 
         if output:
             self.__class__.oci_storage_output = os.path.join(self.oci_storage_prefix, output)
 
         # check status in backup object
-        mbk = kutil.get_mbk(self.ns, self.oci_dump_name)
+        mbk = kutil.get_mbk(self.ns, dump_name)
         self.assertTrue(mbk["status"]["startTime"])
         self.assertTrue(mbk["status"]["completionTime"])
-        self.assertGreater(mbk["status"]["completionTime"],
-                           mbk["status"]["startTime"])
+        self.assertGreaterEqual(mbk["status"]["completionTime"], mbk["status"]["startTime"])
         self.assertEqual(mbk["status"]["status"], "Completed")
         self.assertTrue(mbk["status"]["elapsedTime"])
         self.assertEqual(mbk["status"]["method"], "dump-instance/oci-bucket")
         self.assertEqual(mbk["status"]["bucket"], g_ts_cfg.oci_bucket_name)
-        self.assertTrue(mbk["status"]["ociTenancy"].startswith(
-            "ocid1.tenancy.oc1.."))
+        self.assertTrue(mbk["status"]["ociTenancy"].startswith("ocid1.tenancy.oc1.."))
         # secondary
         self.assertTrue(mbk["status"]["source"].startswith(""))
 
@@ -260,6 +291,115 @@ spec:
         # excluded schemas should be excluded
         excludedfile = ociutil.list_objects("RESTORE", g_ts_cfg.oci_bucket_name, f"{self.__class__.oci_storage_output}/excludeme")
         self.assertListEqual([], excludedfile)
+
+
+    @unittest.skipIf(g_ts_cfg.oci_skip or not g_ts_cfg.oci_config_path or not g_ts_cfg.oci_bucket_name or not g_ts_cfg.oci_s3_endpoint or not g_ts_cfg.oci_s3_credentials_path or not g_ts_cfg.oci_s3_config_path or not g_ts_cfg.oci_s3_profile,
+      "OCI S3: either some or all of [backup config path, bucket name, s3 endpoint, s3 credentials path, s3 config path, s3 profile] not set")
+    def test_1_backup_to_oci_bucket_using_s3_protocol(self):
+        # Set this environment variable to the location of the OCI API Key
+        # to use for backups to OCI Object Storage
+        kutil.create_secret_from_files(self.ns, self.oci_s3_config_secret, [["config", g_ts_cfg.oci_s3_config_path], ["credentials", g_ts_cfg.oci_s3_credentials_path]])
+
+        dump_name = self.oci_s3_dump_name
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: MySQLBackup
+metadata:
+  name: {dump_name}
+spec:
+  clusterName: mycluster
+  backupProfileName: fulldump-oci-s3
+"""
+        kutil.apply(self.ns, yaml)
+
+        # wait for backup to be done
+        def check_mbk(l):
+            for item in l:
+                if item["NAME"] == dump_name and item["STATUS"] == "Completed":
+                    return item
+            return None
+
+        r = self.wait(kutil.ls_mbk, args=(self.ns,),
+                      check=check_mbk, timeout=300)
+        output = r["OUTPUT"]
+        self.assertEqual(r["CLUSTER"], "mycluster")
+        self.assertEqual(r["STATUS"], "Completed")
+        self.assertTrue(output.startswith(f"{dump_name}-"))
+        print(output)
+        if output:
+            self.__class__.oci_storage_output = os.path.join(self.oci_storage_prefix, output)
+
+        # check status in backup object
+        mbk = kutil.get_mbk(self.ns, dump_name)
+        self.assertTrue(mbk["status"]["startTime"])
+        self.assertTrue(mbk["status"]["completionTime"])
+        self.assertGreaterEqual(mbk["status"]["completionTime"], mbk["status"]["startTime"])
+        self.assertEqual(mbk["status"]["status"], "Completed")
+        self.assertTrue(mbk["status"]["elapsedTime"])
+        self.assertEqual(mbk["status"]["method"], "dump-instance/s3")
+        self.assertEqual(mbk["status"]["bucket"], g_ts_cfg.oci_bucket_name)
+        # secondary
+        self.assertTrue(mbk["status"]["source"].startswith(""))
+
+        # TODO check that the bucket contains all expected files
+
+        donefile = ociutil.list_objects("RESTORE", g_ts_cfg.oci_bucket_name, f"{self.__class__.oci_storage_output}/@.done.json")
+        self.assertEqual(1, len(donefile))
+
+        # excluded schemas should be excluded
+        excludedfile = ociutil.list_objects("RESTORE", g_ts_cfg.oci_bucket_name, f"{self.__class__.oci_storage_output}/excludeme")
+        self.assertListEqual([], excludedfile)
+
+    # S3 endpoint is not obligatory for non-OCI S3 but if AWS is not used then it should be passed
+    @unittest.skipIf(g_ts_cfg.s3_skip or not g_ts_cfg.s3_config_path or not g_ts_cfg.s3_bucket_name or not g_ts_cfg.s3_credentials_path or not g_ts_cfg.s3_config_path or not g_ts_cfg.s3_profile,
+      "S3: either some or all of [backup config path, bucket name, s3 endpoint, s3 credentials path, s3 config path, s3 profile] not set")
+    def test_1_backup_to_s3_compatible_storage(self):
+
+        kutil.create_secret_from_files(self.ns, self.s3_config_secret, [["config", g_ts_cfg.s3_config_path], ["credentials", g_ts_cfg.s3_credentials_path]])
+
+        dump_name = self.s3_dump_name
+        yaml = f"""
+apiVersion: mysql.oracle.com/v2
+kind: MySQLBackup
+metadata:
+  name: {dump_name}
+spec:
+  clusterName: mycluster
+  backupProfileName: fulldump-s3
+"""
+        kutil.apply(self.ns, yaml)
+
+        # wait for backup to be done
+        def check_mbk(l):
+            for item in l:
+                if item["NAME"] == dump_name and item["STATUS"] == "Completed":
+                    return item
+            return None
+
+        r = self.wait(kutil.ls_mbk, args=(self.ns,),
+                      check=check_mbk, timeout=300)
+        output = r["OUTPUT"]
+        self.assertEqual(r["CLUSTER"], "mycluster")
+        self.assertEqual(r["STATUS"], "Completed")
+        self.assertTrue(output.startswith(f"{dump_name}-"))
+
+        if output:
+            self.__class__.oci_storage_output = os.path.join(self.oci_storage_prefix, output)
+
+        # check status in backup object
+        mbk = kutil.get_mbk(self.ns, dump_name)
+        self.assertTrue(mbk["status"]["startTime"])
+        self.assertTrue(mbk["status"]["completionTime"])
+        self.assertGreaterEqual(mbk["status"]["completionTime"], mbk["status"]["startTime"])
+        self.assertEqual(mbk["status"]["status"], "Completed")
+        self.assertTrue(mbk["status"]["elapsedTime"])
+        self.assertEqual(mbk["status"]["method"], "dump-instance/s3")
+        self.assertEqual(mbk["status"]["bucket"], g_ts_cfg.s3_bucket_name)
+        # secondary
+        self.assertTrue(mbk["status"]["source"].startswith(""))
+
+        ############### TODO: use some tool or library (boto3?) to get the files from the bucket folder and check for @.done.json
+
 
     @unittest.skipIf(g_ts_cfg.azure_skip or not g_ts_cfg.azure_config_file or not g_ts_cfg.azure_container_name,
       "Azure BLOB Storage backup config path and/or container name not set")
@@ -337,11 +477,15 @@ spec:
         self.wait_pod_gone("mycluster-0")
         self.wait_ic_gone("mycluster")
 
+        kutil.delete_mbk(self.ns, self.s3_dump_name)
+        kutil.delete_mbk(self.ns, self.oci_s3_dump_name)
         kutil.delete_mbk(self.ns, self.oci_dump_name)
         kutil.delete_mbk(self.ns, self.dump_name)
         kutil.delete_pvc(self.ns, self.backup_volume_name)
         kutil.delete_pv(self.backup_volume_name)
 
+        kutil.delete_secret(self.ns, self.s3_config_secret)
+        kutil.delete_secret(self.ns, self.oci_s3_config_secret)
         kutil.delete_secret(self.ns, "backup-apikey")
         kutil.delete_secret(self.ns, "azure-backup")
         kutil.delete_secret(self.ns, "mypwds")

@@ -73,6 +73,7 @@ spec:
             yaml, r'ValidationError\(InnoDBCluster.spec\): unknown field "bogus" in com.oracle.mysql.v2.InnoDBCluster.spec' if kutil.server_version() < '1.25' else
                   r'InnoDBCluster in version "v2" cannot be handled as a InnoDBCluster: strict decoding error: unknown field "spec.bogus"')
 
+
     def test_1_name_too_long(self):
         """
         Checks:
@@ -87,9 +88,14 @@ spec:
   secretName: mypwds
   tlsUseSelfSigned: true
 """
+        if kutil.server_version() < '1.24':
+            too_long_message =  r'metadata.name in body should be at most 40 chars long'
+        elif kutil.server_version() < '1.31':
+            too_long_message = 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be longer than 40'
+        else:
+            too_long_message = 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be more than 40 bytes'
         self.assertApplyFails(
-            yaml, r'metadata.name in body should be at most 40 chars long' if kutil.server_version() < '1.24' else
-                 'The InnoDBCluster "veryveryveryveryveryveryveryverylongnamex" is invalid: metadata.name: Too long: may not be longer than 40')
+            yaml, too_long_message)
 
     def test_1_no_name(self):
         """
@@ -497,7 +503,7 @@ spec:
         ic_ev_num = len(kutil.get_ic_ev(self.ns, "mycluster"))
 
         kutil.patch_ic(self.ns, "mycluster", {"spec": {
-            "version": "8.8.8"
+            "version": "100.8.8"
         }}, type="merge")
 
         # ensure cluster is still healthy
@@ -513,9 +519,9 @@ spec:
 
         # there should be events for the cluster resource indicating the update problem
         self.assertGotClusterEvent(
-            "mycluster", type="Normal", reason="Logging", msg=rf"Propagating spec.version=8.8.8 for {self.ns}/mycluster \(was None\)")
+            "mycluster", type="Normal", reason="Logging", msg=rf"Propagating spec.version=100.8.8 for {self.ns}/mycluster \(was None\)")
         self.assertGotClusterEvent(
-            "mycluster", type="Error", reason="Logging", msg="Handler 'on_innodbcluster_field_version/spec.version' failed permanently: version 8.8.8 must be between .*")
+            "mycluster", type="Error", reason="Logging", msg="Handler 'on_innodbcluster_field_version/spec.version' failed permanently: version 100.8.8 must be between .*")
         self.assertGotClusterEvent(
             "mycluster", type="Normal", reason="Logging", msg="Updating is processed: 0 succeeded; 1 failed.")
 

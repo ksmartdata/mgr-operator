@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -15,20 +15,8 @@ import json
 from utils.tutil import g_full_log
 from utils.optesting import COMMON_OPERATOR_ERRORS
 from e2e.mysqloperator.cluster.cluster_t import check_all
-from setup.config import g_ts_cfg
+from setup.config import g_ts_cfg, Config
 
-
-def get_sts_rollover_update_waiter(test_obj, cluster_name, timeout, delay):
-    def get_pods_uids(pattern) -> set:
-        return set([kutil.get_po(test_obj.ns, pod['NAME'])['metadata']['uid'] for pod in kutil.ls_po(test_obj.ns, pattern=pattern)])
-
-    pattern = f"{cluster_name}-\d"
-    old_uids = get_pods_uids(pattern)
-
-    def waiter() -> bool:
-        test_obj.wait(lambda : len(old_uids.intersection(get_pods_uids(pattern))) == 0, timeout=timeout, delay=delay)
-
-    return waiter
 
 class LFSBadSpec(tutil.OperatorTest):
     default_allowed_op_errors = COMMON_OPERATOR_ERRORS
@@ -91,7 +79,7 @@ spec:
       longQueryTime: 1.8
       collect: true
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       env:
       - name: SOME_OPT
         value: "some_opt_value"
@@ -150,7 +138,7 @@ spec:
       longQueryTime: 2
       collect: true
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       fluentd:
         slowQueryLog:
           tag: slowLogTag
@@ -167,7 +155,7 @@ spec:
       longQueryTime: 2
       collect: true
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       fluentd:
         sinks:
         - name: stdout
@@ -278,7 +266,7 @@ spec:
   edition: community
   tlsUseSelfSigned: true
   podSpec:
-    terminationGracePeriodSeconds: 4
+    terminationGracePeriodSeconds: 5
   logs:
     slowQuery:
       enabled: true
@@ -306,7 +294,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def _02_check_slow_log_exists(self):
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
@@ -333,7 +321,7 @@ spec:
 
     def _04_disable_slow_log(self):
         patch = {"spec": { "logs" : { "slowQuery" : { "enabled": False }}}}
-        waiter = get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         """
@@ -384,7 +372,7 @@ spec:
 
     def _08_reenable_slow_log(self):
         patch = {"spec": { "logs" : { "slowQuery" : { "enabled": True }}}}
-        waiter = get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
@@ -419,7 +407,7 @@ spec:
 
     def _12_enable_general_log(self):
         patch = {"spec": { "logs" : { "general" : { "enabled": True }}}}
-        waiter = get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
@@ -539,7 +527,7 @@ spec:
   podAnnotations:
     server.mycluster.example.com/ann1: "ann1-value"
   podSpec:
-    terminationGracePeriodSeconds: 4
+    terminationGracePeriodSeconds: 5
   logs:
     error:
       collect: false
@@ -551,7 +539,7 @@ spec:
       enabled: true
       longQueryTime: 13.0 #Test fails with k3d on slow systems when the long query time is high one digit seconds
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       containerName: "{cls.collector_container_name}"
       env:
       - name: FLUENTD_OPT
@@ -650,7 +638,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def _02_check_slow_log(self):
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
@@ -805,7 +793,7 @@ spec:
   podAnnotations:
     server.mycluster.example.com/ann1: "ann1-value"
   podSpec:
-    terminationGracePeriodSeconds: 4
+    terminationGracePeriodSeconds: 5
   logs:
     general:
       enabled: true
@@ -836,7 +824,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def _02_check_general_log_exists(self):
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
@@ -862,7 +850,7 @@ spec:
     def _04_disable_general_log(self):
         patch = {"spec": { "logs" : { "general" : { "enabled": False }}}}
         start_time = time()
-        waiter = get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
         self.wait_ic("mycluster", "ONLINE")
@@ -912,10 +900,10 @@ spec:
                 }
             }
         ]
-        waiter = get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
-        # We have set the terminationGracePeriodSeconds to 1s, so the pod should die quickly and be
+        # We have set the terminationGracePeriodSeconds to 5s, so the pod should die quickly and be
         # scheduled a new also quickly
         waiter()
         for instance in reversed(range(0, self.instances)):
@@ -924,13 +912,6 @@ spec:
         print("[08_restart_sts] Cluster ONLINE after %2.f seconds " % (time() - start_time))
 
     def _10_check_general_log_doesnt_exist(self):
-        patch = {"spec": { "logs" : { "general" : { "enabled": False }}}}
-        kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
-        sleep(5)
-        for instance in reversed(range(0, self.instances)):
-            self.wait_pod(f"mycluster-{instance}", "Running")
-        self.wait_ic("mycluster", "ONLINE")
-
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
         pod_names = [server["NAME"] for server in server_pods]
         for pod_name in pod_names:
@@ -958,7 +939,7 @@ spec:
 
     def _12_reenable_general_log(self):
         patch = {"spec": { "logs" : { "general" : { "enabled": True }}}}
-        waiter = get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         waiter()
@@ -1048,7 +1029,7 @@ spec:
   podAnnotations:
     server.mycluster.example.com/ann1: "ann1-value"
   podSpec:
-    terminationGracePeriodSeconds: 4
+    terminationGracePeriodSeconds: 5
   logs:
     general:
       enabled: true
@@ -1057,7 +1038,7 @@ spec:
       enabled: false
       longQueryTime: 2.5
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       env:
       - name: FLUENTD_OPT
         value: -c /tmp/fluent.conf
@@ -1145,7 +1126,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def _02_check_general_log_exists(self):
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
@@ -1292,7 +1273,7 @@ spec:
   podAnnotations:
     server.mycluster.example.com/ann1: "ann1-value"
   podSpec:
-    terminationGracePeriodSeconds: 4
+    terminationGracePeriodSeconds: 5
   logs:
     error:
       collect: true
@@ -1300,7 +1281,7 @@ spec:
       enabled: false
       longQueryTime: 2.5
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       containerName: {cls.collector_container_name}
       env:
       - name: FLUENTD_OPT
@@ -1389,7 +1370,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def _02_check_error_log_exists(self):
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
@@ -1568,7 +1549,7 @@ spec:
   podAnnotations:
     server.mycluster.example.com/ann1: "ann1-value"
   podSpec:
-    terminationGracePeriodSeconds: 4
+    terminationGracePeriodSeconds: 5
   logs:
     error:
       collect: false
@@ -1580,7 +1561,7 @@ spec:
       enabled: true
       longQueryTime: 12.9 #Test fails with k3d on slow systems when the long query time is high one digit seconds
     collector:
-      image: {g_ts_cfg.get_fluentd_image()}
+      image: {g_ts_cfg.get_image(Config.Image.FLUENTD)}
       containerName: "{cls.collector_container_name}"
       env:
       - name: FLUENTD_OPT
@@ -1679,7 +1660,7 @@ spec:
             msg="Dependency resources created, switching status to PENDING")
         self.assertGotClusterEvent(
             "mycluster", after=apply_time, type="Normal",
-            reason=r"StatusChange", msg="Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
+            reason=r"StatusChange", msg=r"Cluster status changed to ONLINE. 1 member\(s\) ONLINE")
 
     def _02_check_slow_log(self):
         server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
@@ -1796,10 +1777,9 @@ spec:
 
     def _06_disable_general_log(self):
         patch = {"spec": { "logs" : { "general" : { "enabled": False, "collect": False }}}}
-        waiter = get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
+        waiter = tutil.get_sts_rollover_update_waiter(self, "mycluster", timeout=500, delay=50)
         start_time = time()
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
-
         waiter()
         self.wait_ic("mycluster", "ONLINE")
         print("[06_disable_general_log] Cluster ONLINE after %.2f seconds " % (time() - start_time))

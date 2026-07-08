@@ -285,7 +285,7 @@ def query_membership_info(session):
     return member_id, role, status, view_id, version, member_count, reachable_member_count
 
 
-def query_members(session):
+def query_members(session) -> list[tuple]:
     res = session.run_sql("""SELECT m.member_id, m.member_role, m.member_state,
         s.view_id, concat(m.member_host, ':', m.member_port), m.member_version
     FROM performance_schema.replication_group_members m
@@ -312,8 +312,9 @@ def query_members(session):
 def parse_uri(uri):
     return mysqlsh.globals.shell.parse_uri(uri)
 
+
 def setup_router_account_with_try(dba_cluster: 'Cluster', logger: 'Logger', user: str, password: str, update: bool = False):
-    msg= f"{'Updating' if update else 'Creating'} router account {user} of cluster {dba_cluster.get_name()}"
+    msg = f"{'Updating' if update else 'Creating'} router account {user} of cluster {dba_cluster.get_name()}"
     logger.info(msg)
     try:
         dba_cluster.setup_router_account(

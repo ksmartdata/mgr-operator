@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2025, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -7,6 +7,7 @@
 from mysqloperator.controller.api_utils import Edition, ImagePullPolicy
 from .kubeutils import k8s_version
 import os
+from importlib.metadata import distributions
 
 debug = False
 #enable_mysqld_general_log = False
@@ -19,20 +20,20 @@ else:
 
 
 # Constants
-OPERATOR_VERSION = "2.1.2"
+OPERATOR_VERSION = "2.1.11"
 OPERATOR_EDITION = Edition.community
 OPERATOR_EDITION_NAME_TO_ENUM = { edition.value : edition.name for edition in Edition }
 
-SHELL_VERSION = "8.3.0"
+SHELL_VERSION = "8.4.9"
 
 MIN_BASE_SERVER_ID = 1
 MAX_BASE_SERVER_ID = 4000000000
 
-DEFAULT_VERSION_TAG = "8.3.0"
+DEFAULT_VERSION_TAG = "8.4.9"
 
 DEFAULT_SERVER_VERSION_TAG = DEFAULT_VERSION_TAG
 MIN_SUPPORTED_MYSQL_VERSION = "8.0.27"
-MAX_SUPPORTED_MYSQL_VERSION = "8.3.0" # SHELL_VERSION
+MAX_SUPPORTED_MYSQL_VERSION = "8.4.99" # SHELL_VERSION
 
 DISABLED_MYSQL_VERSION = {
     "8.0.29": "Support for MySQL 8.0.29 is disabled. Please see https://dev.mysql.com/doc/relnotes/mysql-operator/en/news-8-0-29.html"
@@ -41,7 +42,7 @@ DISABLED_MYSQL_VERSION = {
 DEFAULT_ROUTER_VERSION_TAG = DEFAULT_VERSION_TAG
 
 # This is used for the sidecar. The operator version is deploy-operator.yaml
-DEFAULT_OPERATOR_VERSION_TAG = "8.3.0-2.1.2"
+DEFAULT_OPERATOR_VERSION_TAG = "8.4.9-2.1.11"
 
 DEFAULT_IMAGE_REPOSITORY = os.getenv(
     "MYSQL_OPERATOR_DEFAULT_REPOSITORY", default="container-registry.oracle.com/mysql").rstrip('/')
@@ -58,7 +59,6 @@ CLUSTER_ADMIN_USER_NAME = "mysqladmin"
 ROUTER_METADATA_USER_NAME = "mysqlrouter"
 BACKUP_USER_NAME = "mysqlbackup"
 
-
 def log_config_banner(logger) -> None:
     logger.info(f"KUBERNETES_VERSION ={k8s_version()}")
     logger.info(f"OPERATOR_VERSION   ={OPERATOR_VERSION}")
@@ -68,7 +68,10 @@ def log_config_banner(logger) -> None:
     logger.info(f"DEFAULT_VERSION_TAG={DEFAULT_VERSION_TAG}")
     logger.info(f"SIDECAR_VERSION_TAG={DEFAULT_OPERATOR_VERSION_TAG}")
     logger.info(f"DEFAULT_IMAGE_REPOSITORY   ={DEFAULT_IMAGE_REPOSITORY}")
-
+    for dist in distributions():
+        name = dist.metadata['Name']
+        version = dist.version
+        logger.info(f"{name:23}={version:10}")
 
 def config_from_env() -> None:
     import mysqlsh

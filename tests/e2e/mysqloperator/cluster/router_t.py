@@ -1,4 +1,4 @@
-# Copyright (c) 2020, 2023, Oracle and/or its affiliates.
+# Copyright (c) 2020, 2024, Oracle and/or its affiliates.
 #
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/
 #
@@ -21,11 +21,15 @@ def check_sidecar_health(test, ns, pod):
     test.assertIn("Starting Operator request handler...", logs)
 
 def get_routing_options(ns, pod) -> dict:
-        result = kutil.execp(ns, [pod, "sidecar"],
-                             ["mysqlsh", "root:sakila@localhost", "-e",
-                              "print(dba.getCluster().routingOptions())",
-                              "--quiet-start=2"])
+    result = kutil.execp(ns, [pod, "sidecar"],
+                         ["mysqlsh", "root:sakila@localhost", "--js", "-e",
+                          "print(dba.getCluster().routerOptions())",
+                          "--quiet-start=2"])
+    try:
         return json.loads(result)
+    except json.decoder.JSONDecodeError:
+        print(f"Failed shell output: {result=}")
+        raise
 
 
 # Test 1 member cluster with all default configs
@@ -267,17 +271,15 @@ spec:
             },
         ]
 
+        waiter = tutil.get_deploy_rollover_update_waiter(self, "mycluster", timeout=300, delay=5)
         kutil.patch_ic(self.ns, "mycluster", patch, type="json", data_as_type='json')
+        waiter()
+        server_pods = kutil.ls_po(self.ns, pattern=f"mycluster-\d")
+        pod_names = [server["NAME"] for server in server_pods]
+        for pod_name in pod_names:
+            self.wait_pod(pod_name, "Running")
 
-        # Give time to the operator to update the deployment and new routers to be
-        # started.
-        # Because the Operator has two handlers - one for labels, one for annotations
-        # and they run async. One of the handlers will patch the deployment, which will
-        # spawn a new router pod and then the second handler will patch, which will
-        # spawn another router pod and the recently started one will move directly into
-        # terminating state. So, at one point of time there will be one running and two
-        # terminating routers.
-        sleep(20)
+        self.wait_routers("mycluster-router-*", 1)
 
     def test_07_check_ic(self):
         labels = kutil.get_ic(self.ns, "mycluster")["spec"]["router"]["podLabels"]
@@ -430,11 +432,11 @@ spec:
 
     def test_4_initial_routing_options(self):
         routing_options = get_routing_options(self.ns, "mycluster-0")
-        global_options = routing_options["global"]
-        self.assertEqual(global_options["read_only_targets"], "read_replicas")
+        rules = routing_options["configuration"]["routing_rules"]
+        self.assertEqual(rules["read_only_targets"], "read_replicas")
         # stats_updates_frequencies is set as it has a default value in the CRD,
         # which matches router's default
-        self.assertEqual(global_options["stats_updates_frequency"], 0)
+        self.assertEqual(rules["stats_updates_frequency"], 0)
 
     def test_5_add_routing_options(self):
         patch = {
@@ -448,9 +450,9 @@ spec:
         }
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         routing_options = get_routing_options(self.ns, "mycluster-0")
-        global_options = routing_options["global"]
-        self.assertEqual(global_options["read_only_targets"], "read_replicas")
-        self.assertEqual(global_options["stats_updates_frequency"], 10)
+        rules = routing_options["configuration"]["routing_rules"]
+        self.assertEqual(rules["read_only_targets"], "read_replicas")
+        self.assertEqual(rules["stats_updates_frequency"], 10)
 
     def test_6_remove_routing_options(self):
         patch = {
@@ -462,9 +464,9 @@ spec:
         }
         kutil.patch_ic(self.ns, "mycluster", patch, type="merge")
         routing_options = get_routing_options(self.ns, "mycluster-0")
-        global_options = routing_options["global"]
-        self.assertEqual(global_options["read_only_targets"], "secondaries")
-        self.assertEqual(global_options["stats_updates_frequency"], None)
+        rules = routing_options["configuration"]["routing_rules"]
+        self.assertEqual(rules["read_only_targets"], "secondaries")
+        self.assertEqual(rules["stats_updates_frequency"], -1)
 
     def test_9_destroy(self):
         kutil.delete_ic(self.ns, "mycluster")
